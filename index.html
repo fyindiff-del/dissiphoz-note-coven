@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>d i s s i p h o z Note Coven</title>
+  <link href="https://fonts.googleapis.com/css2?family=UnifrakturCook:wght@700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="bg"></div>
+  <header class="topbar">
+    <div class="logo">
+      <div class="star" aria-hidden="true">
+        <!-- star with a tooth-like detail (SVG) -->
+        <svg width="54" height="54" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#9b30ff"/><stop offset="1" stop-color="#4b0082"/></linearGradient></defs>
+          <path d="M32 4 L39 25 L61 25 L43 38 L50 60 L32 46 L14 60 L21 38 L3 25 L25 25 Z" fill="url(#g)" stroke="#2a002a" stroke-width="1.5"/>
+          <!-- little tooth -->
+          <path d="M32 46 L35 40 L38 46 Z" fill="#2e0030"/>
+        </svg>
+      </div>
+      <div class="title">d i s s i p h o z <span class="sub">Note Coven</span></div>
+    </div>
+    <div class="room-indicator">Sala: <span id="roomName">main</span></div>
+  </header>
+
+  <!-- Login modal -->
+  <div id="loginModal" class="modal">
+    <div class="modal-card">
+      <h2>d i s s i p h o z</h2>
+      <p class="hint">Entre com seu nome e senha. Se não existir, será criado.</p>
+      <input id="user" placeholder="Nome (ex: arcanus)" />
+      <input id="pass" type="password" placeholder="Senha" />
+      <input id="room" placeholder="Sala (ex: musica)" value="main" />
+      <button id="btnLogin">Entrar</button>
+      <div class="small">Tema: dark mystic / rock • Texto claro ao digitar</div>
+    </div>
+  </div>
+
+  <main class="app">
+    <aside class="sidebar">
+      <div class="panel">
+        <h3>Usuários</h3>
+        <div id="usersList" class="users"></div>
+      </div>
+      <div class="panel">
+        <h4>Controles</h4>
+        <button id="btnSave">Salvar</button>
+        <button id="btnLeave">Sair da sala</button>
+      </div>
+    </aside>
+    <section class="editor-area">
+      <textarea id="editor" spellcheck="false" placeholder="Converse com a noite..."></textarea>
+    </section>
+  </main>
+
+  <footer class="footer">d i s s i p h o z • Note Coven</footer>
+
+<script>
+  const wsProto = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+  let ws;
+  let currentUser = null;
+  let currentRoom = 'main';
+
+  const loginModal = document.getElementById('loginModal');
+  const btnLogin = document.getElementById('btnLogin');
+  const userInput = document.getElementById('user');
+  const passInput = document.getElementById('pass');
+  const roomInput = document.getElementById('room');
+  const editor = document.getElementById('editor');
+  const usersList = document.getElementById('usersList');
+  const roomNameEl = document.getElementById('roomName');
+
+  function connectWs(){
+    ws = new WebSocket(wsProto);
+    ws.addEventListener('open', ()=>{ console.log('ws open'); });
+    ws.addEventListener('message', (ev)=>{
+      const msg = JSON.parse(ev.data);
+      if(msg.type === 'auth-ok'){
+        currentUser = msg.user;
+        currentRoom = msg.room || 'main';
+        roomNameEl.textContent = currentRoom;
+        editor.value = msg.content || '';
+        loginModal.style.display = 'none';
+      } else if(msg.type === 'auth-fail'){
+        alert('Autenticação falhou: ' + (msg.reason||'erro'));
+      } else if(msg.type === 'update'){
+        editor.value = msg.content;
+      } else if(msg.type === 'presence'){
+        renderUsers(msg.users || []);
+      }
+    });
+    ws.addEventListener('close', ()=>{ console.log('ws closed'); });
+  }
+
+  btnLogin.addEventListener('click', ()=>{
+    const user = userInput.value.trim();
+    const pass = passInput.value;
+    const room = (roomInput.value || 'main').trim() || 'main';
+    if(!user || !pass){ alert('Informe nome e senha'); return; }
+    if(!ws || ws.readyState !== WebSocket.OPEN) connectWs();
+    ws.addEventListener('open', ()=>{
+      ws.send(JSON.stringify({type:'auth', user, pass, room}));
+    }, {once:true});
+    if(ws.readyState === WebSocket.OPEN){
+      ws.send(JSON.stringify({type:'auth', user, pass, room}));
+    }
+  });
+
+  function renderUsers(list){
+    usersList.innerHTML = '';
+    list.forEach(u=>{
+      const d = document.createElement('div');
+      d.className = 'u';
+      d.textContent = u;
+      usersList.appendChild(d);
+    });
+  }
+
+  // Debounce edits
+  let t;
+  editor.addEventListener('input', ()=>{
+    if(!ws || ws.readyState !== WebSocket.OPEN) return;
+    clearTimeout(t);
+    t = setTimeout(()=>{
+      ws.send(JSON.stringify({type:'edit', content: editor.value}));
+    }, 250);
+  });
+
+  document.getElementById('btnSave').addEventListener('click', ()=>{
+    if(!ws || ws.readyState !== WebSocket.OPEN) return alert('Conecte-se primeiro');
+    // trigger save by re-sending content (server always persists)
+    ws.send(JSON.stringify({type:'edit', content: editor.value}));
+    alert('Salvo.');
+  });
+
+  document.getElementById('btnLeave').addEventListener('click', ()=>{
+    location.reload();
+  });
+
+</script>
+</body>
+</html>
